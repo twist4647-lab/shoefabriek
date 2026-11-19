@@ -1,3 +1,8 @@
+
+
+
+HTML icon
+index
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -542,13 +547,16 @@ function doPost(e) {
     /*************************************************************************
      * 1. STATE & CONSTANTS
      *************************************************************************/
+    const DEFAULT_SHEET_URL = 'https://script.google.com/macros/s/AKfycbw8AlYFnBM1TLwVCpKJnol6vsSnM2j7ARZiX1s5gecXGJHEwZJ2Y8l721mV2CPlESWMog/exec';
+
     const STORAGE_KEYS = {
       ENTRIES: 'soletrack_entries_v3',
       SETTINGS: 'soletrack_settings_v3',
       SESSION: 'soletrack_session_v3',
       QUEUE: 'soletrack_sync_queue_v3',
       REGISTRY: 'soletrack_registry_v3',
-      ORDERS: 'soletrack_orders_v3'
+      ORDERS: 'soletrack_orders_v3',
+      DRAFT: 'soletrack_entry_draft_v3'
     };
 
     const PRODUCT_ID_REGEX = /^[A-Z0-9]{2,6}(-[A-Z0-9]{2,8}){1,4}$/;
@@ -786,7 +794,7 @@ function doPost(e) {
         sections: [...DEFAULT_SECTIONS],
         defectCodes: [...DEFAULT_DEFECT_CODES],
         targetPairs: 50,
-        sheetUrl: ''
+        sheetUrl: DEFAULT_SHEET_URL
       },
       editingId: null,
       editingRegistryId: null,
@@ -797,6 +805,10 @@ function doPost(e) {
       formDraft: null,
       selectedSerialDefects: {},
       syncQueue: [],
+      deletedIds: {},
+      isTypingInForm: false,
+      lastTypingAt: 0,
+      pendingBackgroundRender: false,
       isSyncing: false,
       lastSyncError: false,
       pollTimer: null
@@ -862,7 +874,7 @@ function doPost(e) {
             sections: Array.isArray(parsed.sections) && parsed.sections.length ? parsed.sections : [...DEFAULT_SECTIONS],
             defectCodes: Array.isArray(parsed.defectCodes) && parsed.defectCodes.length ? parsed.defectCodes : [...DEFAULT_DEFECT_CODES],
             targetPairs: Number(parsed.targetPairs) > 0 ? Number(parsed.targetPairs) : 50,
-            sheetUrl: parsed.sheetUrl || ''
+            sheetUrl: (parsed.sheetUrl && parsed.sheetUrl.trim()) ? parsed.sheetUrl.trim() : DEFAULT_SHEET_URL
           };
         }
 
@@ -1347,7 +1359,7 @@ function doPost(e) {
       renderActiveView();
       startPollingLoop();
 
-      if (state.settings.sheetUrl) {
+      if (isSyncConfigured()) {
         syncWithGoogleSheet(false);
       }
       if (!silent) {
@@ -1549,9 +1561,108 @@ function doPost(e) {
       return { start, end, serials };
     }
 
+    function readEntryFormValues() {
+      const form = document.getElementById('production-entry-form');
+      if (!form) return state.formDraft;
+      return {
+        product: document.getElementById('f-product')?.value ?? '',
+        style: document.getElementById('f-style')?.value ?? '',
+        date: document.getElementById('f-date')?.value ?? getLocalDateString(0),
+        section: document.getElementById('f-section')?.value ?? (state.settings.sections[0] || 'Cutting'),
+        process: document.getElementById('f-process')?.value ?? '',
+        operator: document.getElementById('f-operator')?.value ?? '',
+        machine: document.getElementById('f-machine')?.value ?? '',
+        pairs: document.getElementById('f-pairs')?.value ?? '',
+        dl: document.getElementById('f-dl')?.value ?? '',
+        dr: document.getElementById('f-dr')?.value ?? '',
+        comments: document.getElementById('f-comments')?.value ?? '',
+        editingId: state.editingId || null,
+        selectedSerialDefects: { ...state.selectedSerialDefects }
+      };
+    }
+
+    function saveDraftToStorage() {
+      const draft = readEntryFormValues();
+      if (!draft) return;
+      state.formDraft = draft;
+      try {
+        localStorage.setItem(STORAGE_KEYS.DRAFT, JSON.stringify(draft));
+      } catch (e) {
+        console.error('Error saving draft:', e);
+      }
+    }
+
+    function loadDraftFromStorage() {
+      if (state.formDraft) return state.formDraft;
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.DRAFT);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          state.formDraft = parsed;
+          if (parsed.editingId && !state.editingId) {
+            state.editingId = parsed.editingId;
+          }
+          if (parsed.selectedSerialDefects && Object.keys(state.selectedSerialDefects).length === 0) {
+            state.selectedSerialDefects = { ...parsed.selectedSerialDefects };
+          }
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Error loading draft:', e);
+      }
+      return null;
+    }
+
+    function clearDraftStorage() {
+      state.formDraft = null;
+      try {
+        localStorage.removeItem(STORAGE_KEYS.DRAFT);
+      } catch (e) {
+        console.error('Error clearing draft:', e);
+      }
+    }
+
+    function isSyncPausedForTyping() {
+      const activeInsideForm = !!document.activeElement?.closest('#production-entry-form');
+      const recentlyTyped = (Date.now() - (state.lastTypingAt || 0)) < 1500;
+      return state.isTypingInForm || activeInsideForm || recentlyTyped;
+    }
+
+    function bindEntryFormDraftListeners() {
+      const form = document.getElementById('production-entry-form');
+      if (!form) return;
+
+      form.addEventListener('focusin', () => {
+        state.isTypingInForm = true;
+      });
+
+      form.addEventListener('focusout', () => {
+        saveDraftToStorage();
+        setTimeout(() => {
+          state.isTypingInForm = !!document.activeElement?.closest('#production-entry-form');
+          if (!state.isTypingInForm && state.pendingBackgroundRender && state.activeTab === 'entry') {
+            state.pendingBackgroundRender = false;
+            renderActiveView();
+          }
+        }, 150);
+      });
+
+      form.addEventListener('input', () => {
+        state.lastTypingAt = Date.now();
+        saveDraftToStorage();
+      });
+
+      form.addEventListener('change', () => {
+        state.lastTypingAt = Date.now();
+        saveDraftToStorage();
+      });
+    }
+
     function renderDataEntryView(container) {
+      const savedDraft = loadDraftFromStorage();
       const editingEntry = state.editingId ? state.entries.find(e => e.id === state.editingId) : null;
-      const d = state.formDraft || editingEntry || {
+      const d = savedDraft || editingEntry || {
         product: '',
         style: '',
         date: getLocalDateString(0),
@@ -1769,6 +1880,7 @@ function doPost(e) {
       const form = document.getElementById('production-entry-form');
       if (form) {
         form.addEventListener('submit', handleEntryFormSubmit);
+        bindEntryFormDraftListeners();
       }
       updateSerialPreviewAndTagger();
       renderRecentEntriesList();
@@ -1776,7 +1888,10 @@ function doPost(e) {
 
     function selectOrderPartProcess(procName) {
       const el = document.getElementById('f-process');
-      if (el) el.value = procName;
+      if (el) {
+        el.value = procName;
+        saveDraftToStorage();
+      }
     }
 
     function updateOperatorNamePreview() {
@@ -1830,6 +1945,7 @@ function doPost(e) {
       if (opInput) opInput.value = opId;
       if (box) box.classList.add('hidden');
       updateOperatorNamePreview();
+      saveDraftToStorage();
     }
 
     function handleEntryFormLiveChange() {
@@ -1918,6 +2034,7 @@ function doPost(e) {
         delete state.selectedSerialDefects[serial];
       }
       updateSerialPreviewAndTagger();
+      saveDraftToStorage();
     }
 
     function handleEntryFormSubmit(e) {
@@ -2039,7 +2156,7 @@ function doPost(e) {
         } else {
           state.entries.unshift(entry);
         }
-        state.formDraft = null;
+        clearDraftStorage();
         state.selectedSerialDefects = {};
         saveEntriesToLocal();
         enqueueSheetSync({ action: 'upsert', entry });
@@ -2141,7 +2258,7 @@ function doPost(e) {
       const found = state.entries.find(e => e.id === id);
       if (!found) return;
       state.editingId = id;
-      state.formDraft = null;
+      clearDraftStorage();
       state.selectedSerialDefects = {};
       (found.serialDefects || []).forEach(sd => {
         state.selectedSerialDefects[sd.serial] = { ...sd };
@@ -2152,7 +2269,7 @@ function doPost(e) {
 
     function cancelEditEntry() {
       state.editingId = null;
-      state.formDraft = null;
+      clearDraftStorage();
       state.selectedSerialDefects = {};
       renderActiveView();
     }
@@ -2171,13 +2288,32 @@ function doPost(e) {
       body.innerHTML = `<p class="text-sm text-[#424245] dark:text-[#AEAEB2]">Remove entry for <strong class="font-mono">${escapeHtml(found.product)}</strong> (${found.pairs} pairs in ${escapeHtml(found.section)})?</p>`;
 
       submitBtn.onclick = () => {
+        const targetEntry = state.entries.find(e => e.id === id);
+        state.deletedIds[id] = Date.now();
+        // Remove entry and its generated serial range & tagged serial defects from local state
         state.entries = state.entries.filter(e => e.id !== id);
-        if (state.editingId === id) state.editingId = null;
+        if (targetEntry) {
+          for (let s = targetEntry.serialStart; s <= targetEntry.serialEnd; s++) {
+            const serCode = `${targetEntry.product}-${String(s).padStart(3, '0')}`;
+            delete state.selectedSerialDefects[serCode];
+          }
+        }
+        if (state.editingId === id) {
+          state.editingId = null;
+          clearDraftStorage();
+        }
         saveEntriesToLocal();
-        enqueueSheetSync({ action: 'delete', id });
+        enqueueSheetSync({
+          action: 'delete',
+          id,
+          product: targetEntry ? targetEntry.product : '',
+          section: targetEntry ? targetEntry.section : '',
+          serial_start: targetEntry ? targetEntry.serialStart : '',
+          serial_end: targetEntry ? targetEntry.serialEnd : ''
+        });
         closeConfirmModal();
         renderActiveView();
-        showToast('Entry deleted', 'info');
+        showToast('Entry and generated serials deleted', 'info');
       };
 
       modal.classList.remove('hidden');
@@ -3899,7 +4035,7 @@ function doPost(e) {
       renderActiveView();
       showToast('Settings saved', 'success');
 
-      if (sheetUrl) {
+      if (isSyncConfigured()) {
         syncWithGoogleSheet(true);
       }
     }
@@ -4013,8 +4149,17 @@ function doPost(e) {
     /*************************************************************************
      * 12. GOOGLE SHEETS LIVE SYNC & OFFLINE QUEUE
      *************************************************************************/
+    // When served from Apps Script (HtmlService) use google.script.run; otherwise fall back to the Web App URL.
+    const HAS_GAS = typeof google !== 'undefined' && !!(google.script && google.script.run);
+    function gas(fn, ...args) {
+      return new Promise((resolve, reject) => {
+        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fn](...args);
+      });
+    }
+    function isSyncConfigured() { return HAS_GAS || !!state.settings.sheetUrl; }
+
     function enqueueSheetSync(payload) {
-      if (!state.settings.sheetUrl) return;
+      if (!isSyncConfigured()) return;
       if (payload.entry) {
         const e = payload.entry;
         payload = { action: payload.action, entry: { ...e, serial_start: e.serialStart, serial_end: e.serialEnd, serial_defects: JSON.stringify(e.serialDefects || []) } };
@@ -4026,18 +4171,25 @@ function doPost(e) {
 
     async function flushSyncQueue() {
       const url = state.settings.sheetUrl;
-      if (!url || !state.syncQueue.length || state.isFlushing) return;
+      if (!isSyncConfigured() || !state.syncQueue.length || state.isFlushing) return;
       state.isFlushing = true;
       try {
         while (state.syncQueue.length > 0) {
           const item = state.syncQueue[0];
           try {
-            const res = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify(item)
-            });
-            if (!res.ok) throw new Error('HTTP ' + res.status);
+            if (HAS_GAS) {
+              await gas('apiPostAction', JSON.parse(JSON.stringify(item)));
+            } else {
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(item)
+              });
+              if (!res.ok) throw new Error('HTTP ' + res.status);
+            }
+            if (item && item.action === 'delete' && item.id) {
+              delete state.deletedIds[item.id];
+            }
             state.syncQueue.shift();
             saveQueueToLocal();
             state.lastSyncError = false;
@@ -4054,7 +4206,7 @@ function doPost(e) {
 
     async function syncWithGoogleSheet(notify = false) {
       const url = state.settings.sheetUrl;
-      if (!url) {
+      if (!isSyncConfigured()) {
         updateSyncBadge();
         return;
       }
@@ -4065,14 +4217,33 @@ function doPost(e) {
       try {
         await flushSyncQueue();
         if (state.syncQueue.length > 0) throw new Error('Unsent entries pending');
-        const res = await fetch(url, { method: 'GET' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
+        let data;
+        if (HAS_GAS) {
+          data = await gas('apiGetEntries');
+        } else {
+          const res = await fetch(url, { method: 'GET' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          data = await res.json();
+        }
         if (data && Array.isArray(data.entries)) {
-          state.entries = data.entries.map(normalizeEntry);
+          const pendingDeleteIds = new Set([
+            ...Object.keys(state.deletedIds || {}),
+            ...state.syncQueue.filter(q => q.action === 'delete').map(q => String(q.id))
+          ]);
+          state.entries = data.entries
+            .map(normalizeEntry)
+            .filter(e => !pendingDeleteIds.has(String(e.id)));
           saveEntriesToLocal();
           state.lastSyncError = false;
-          if (!state.editingId) renderActiveView();
+          if (!state.editingId) {
+            if (state.activeTab === 'entry' && isSyncPausedForTyping()) {
+              saveDraftToStorage();
+              state.pendingBackgroundRender = true;
+            } else {
+              state.pendingBackgroundRender = false;
+              renderActiveView();
+            }
+          }
           if (notify) showToast(`Synced ${state.entries.length} entries from Google Sheet`, 'success');
         }
       } catch (err) {
@@ -4086,6 +4257,7 @@ function doPost(e) {
 
     async function testSheetConnection() {
       const inputUrl = document.getElementById('set-sheet-url').value.trim();
+      if (HAS_GAS) { await syncWithGoogleSheet(true); return; }
       if (!inputUrl) {
         showToast('Paste your Google Apps Script Web App URL first', 'error');
         return;
@@ -4098,9 +4270,12 @@ function doPost(e) {
     function startPollingLoop() {
       if (state.pollTimer) clearInterval(state.pollTimer);
       state.pollTimer = setInterval(() => {
-        if (state.settings.sheetUrl && state.inspectorId) {
-          syncWithGoogleSheet(false);
+        if (!isSyncConfigured() || !state.inspectorId) return;
+        if (isSyncPausedForTyping()) {
+          saveDraftToStorage();
+          return;
         }
+        syncWithGoogleSheet(false);
       }, 10000);
     }
 
@@ -4109,7 +4284,7 @@ function doPost(e) {
       const label = document.getElementById('sync-label');
       if (!dot || !label) return;
 
-      if (!state.settings.sheetUrl) {
+      if (!isSyncConfigured()) {
         dot.className = 'w-2 h-2 rounded-full bg-blue-500';
         label.textContent = 'Local Storage';
       } else if (state.isSyncing) {
@@ -4165,3 +4340,4 @@ function doPost(e) {
   </script>
 </body>
 </html>
+Analyzing
