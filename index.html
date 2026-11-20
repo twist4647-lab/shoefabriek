@@ -207,7 +207,7 @@
       <form id="signin-form" novalidate class="space-y-4">
         <div>
           <label for="login-id" class="block text-xs font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#98989D] mb-1.5">Inspector Login ID</label>
-          <input id="login-id" type="text" placeholder="INS-001" autocomplete="username"
+          <input id="login-id" type="text" placeholder="SF-10001" autocomplete="username"
             class="w-full min-h-[46px] px-4 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-[#1C1C1E] outline-none font-mono text-base uppercase transition" />
           <p id="login-id-err" class="hidden text-xs text-red-500 mt-1.5 font-medium"></p>
         </div>
@@ -233,7 +233,7 @@
       <button id="demo-signin-btn" type="button"
         class="w-full min-h-[46px] rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] hover:bg-[#E8E8ED] dark:hover:bg-[#3A3A3C] text-[#1D1D1F] dark:text-[#F5F5F7] font-medium text-sm flex items-center justify-center gap-2 transition cursor-pointer">
         <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-        Demo Sign-In (INS-001 / 1234)
+        Demo Sign-In (SF-10001 / 1234)
       </button>
 
       <p class="text-[11px] text-center text-[#86868B] dark:text-[#98989D] mt-5 leading-relaxed">
@@ -271,7 +271,7 @@
               IN
             </div>
             <div>
-              <div id="sidebar-inspector-id" class="font-mono text-xs font-bold">INS-001</div>
+              <div id="sidebar-inspector-id" class="font-mono text-xs font-bold">SF-10001</div>
               <div class="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Active Shift</div>
             </div>
           </div>
@@ -311,7 +311,7 @@
 
             <!-- Mobile Inspector Pill + Sign Out -->
             <button onclick="signOut()" class="lg:hidden min-h-[40px] px-2.5 rounded-xl bg-white dark:bg-[#1C1C1E] border border-black/5 dark:border-white/10 text-xs font-mono font-semibold flex items-center gap-1.5 text-[#86868B] hover:text-red-500 transition cursor-pointer" title="Sign Out">
-              <span id="mobile-inspector-id">INS-001</span>
+              <span id="mobile-inspector-id">SF-10001</span>
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
               </svg>
@@ -557,7 +557,53 @@ function doPost(e) {
 
     const PRODUCT_ID_REGEX = /^[A-Z0-9]{2,6}(-[A-Z0-9]{2,8}){1,4}$/;
     const OPERATOR_ID_REGEX = /^SF-(TR-)?\d{5}$/;
+    const INSPECTOR_ID_REGEX = /^SF-(TR-)?\d{5}$/;
     const MACHINE_CODE_REGEX = /^[A-Z]{2}-\d{4}$/;
+
+    function normalizeProductKey(raw) {
+      return String(raw || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    }
+
+    function normalizeSectionKey(raw) {
+      return String(raw || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+    }
+
+    function formatSerialCode(product, num, padWidth = 3) {
+      const cleanProd = normalizeProductKey(product);
+      const width = Math.max(3, padWidth, String(num).length);
+      return `${cleanProd}-${String(num).padStart(width, '0')}`;
+    }
+
+    function validateSerialConvention(product) {
+      const clean = normalizeProductKey(product);
+      if (!clean) {
+        return { valid: false, message: 'Product ID (SKU) is required.' };
+      }
+      if (!PRODUCT_ID_REGEX.test(clean)) {
+        return {
+          valid: false,
+          message: 'Use dash-separated uppercase alphanumeric segments (e.g., 203-0926-DBN45).'
+        };
+      }
+      const warnings = [];
+      if (/[OI]/.test(clean)) {
+        warnings.push('Contains O or I — verify against 0/1 label confusion.');
+      }
+      const segments = clean.split('-');
+      const lastSeg = segments[segments.length - 1];
+      if (/^\d+$/.test(lastSeg)) {
+        warnings.push(`Trailing numeric segment "-${lastSeg}" sits adjacent to the "-001" sequence suffix.`);
+      }
+      return { valid: true, normalized: clean, warnings };
+    }
 
     const DEFAULT_SECTIONS = [
       'Cutting',
@@ -681,7 +727,7 @@ function doPost(e) {
         {
           id: 'ent-1',
           ts: new Date(Date.now() - 3600000 * 5).toISOString(),
-          inspector: 'INS-001',
+          inspector: 'SF-10001',
           product: '203-0926-DBN45',
           style: 'Derby Classic Brown',
           date: getLocalDateString(0),
@@ -700,7 +746,7 @@ function doPost(e) {
         {
           id: 'ent-2',
           ts: new Date(Date.now() - 3600000 * 4).toISOString(),
-          inspector: 'INS-001',
+          inspector: 'SF-10001',
           product: '203-0926-DBN45',
           style: 'Derby Classic Brown',
           date: getLocalDateString(0),
@@ -719,7 +765,7 @@ function doPost(e) {
         {
           id: 'ent-3',
           ts: new Date(Date.now() - 3600000 * 3).toISOString(),
-          inspector: 'INS-002',
+          inspector: 'SF-10002',
           product: '203-0926-DBN45',
           style: 'Derby Classic Brown',
           date: getLocalDateString(0),
@@ -740,7 +786,7 @@ function doPost(e) {
         {
           id: 'ent-4',
           ts: new Date(Date.now() - 3600000 * 2).toISOString(),
-          inspector: 'INS-001',
+          inspector: 'SF-10001',
           product: '203-0926-DBN45',
           style: 'Derby Classic Brown',
           date: getLocalDateString(0),
@@ -759,7 +805,7 @@ function doPost(e) {
         {
           id: 'ent-5',
           ts: new Date(Date.now() - 3600000 * 1).toISOString(),
-          inspector: 'INS-002',
+          inspector: 'SF-10002',
           product: '203-0926-DBN45',
           style: 'Derby Classic Brown',
           date: getLocalDateString(0),
@@ -797,6 +843,8 @@ function doPost(e) {
       registrySearch: '',
       editingOrderId: null,
       orderDraftParts: [],
+      orderFormDraft: null,
+      recentInspectorFilter: 'ALL',
       expandedEntryIds: {},
       formDraft: null,
       selectedSerialDefects: {},
@@ -843,11 +891,11 @@ function doPost(e) {
       return {
         id: String(raw.id || 'ent-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)),
         ts: raw.ts || new Date().toISOString(),
-        inspector: String(raw.inspector || '').toUpperCase(),
-        product: String(raw.product || '').toUpperCase(),
-        style: String(raw.style || ''),
+        inspector: String(raw.inspector || '').trim().toUpperCase(),
+        product: normalizeProductKey(raw.product),
+        style: String(raw.style || '').trim(),
         date: String(raw.date || getLocalDateString(0)),
-        section: String(raw.section || 'Cutting'),
+        section: String(raw.section || 'Cutting').trim(),
         process: String(raw.process || ''),
         operator: String(raw.operator || '').toUpperCase(),
         machine: String(raw.machine || '').toUpperCase(),
@@ -1304,8 +1352,8 @@ function doPost(e) {
           const pinVal = pinInput.value.trim();
 
           let valid = true;
-          if (!/^INS-\d{3,5}$/.test(idVal)) {
-            idErr.textContent = 'Enter a valid Inspector ID (e.g. INS-001).';
+          if (!INSPECTOR_ID_REGEX.test(idVal)) {
+            idErr.textContent = 'Enter a valid Inspector ID (e.g. SF-10001 or SF-TR-30001).';
             idErr.classList.remove('hidden');
             valid = false;
           }
@@ -1322,14 +1370,15 @@ function doPost(e) {
 
       if (demoBtn) {
         demoBtn.addEventListener('click', () => {
-          completeSignIn('INS-001');
+          completeSignIn('SF-10001');
         });
       }
 
       try {
         const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
         if (savedSession) {
-          completeSignIn(savedSession, true);
+          const migrated = INSPECTOR_ID_REGEX.test(savedSession) ? savedSession : 'SF-10001';
+          completeSignIn(migrated, true);
         }
       } catch (e) {
         console.error(e);
@@ -1536,25 +1585,35 @@ function doPost(e) {
      * 5. DATA ENTRY VIEW (SERIAL GENERATION, DEFECT TAGGING & RECENT LOGS)
      *************************************************************************/
     function getNextSerialRange(product, section, pairs, excludeEntryId = null) {
-      const cleanProd = (product || '').trim().toUpperCase();
+      const cleanProd = normalizeProductKey(product);
+      const cleanSecKey = normalizeSectionKey(section);
       const count = Math.max(0, Math.floor(Number(pairs) || 0));
-      if (!cleanProd || !section || count < 1) {
-        return { start: 1, end: 0, serials: [] };
+      if (!cleanProd || !cleanSecKey || count < 1) {
+        return { start: 1, end: 0, padWidth: 3, serials: [], collisionDetected: false };
       }
+
       let maxEnd = 0;
+      const existingRanges = [];
       state.entries.forEach(e => {
         if (excludeEntryId && e.id === excludeEntryId) return;
-        if (e.product === cleanProd && e.section === section) {
-          if (e.serialEnd > maxEnd) maxEnd = e.serialEnd;
+        if (normalizeProductKey(e.product) === cleanProd && normalizeSectionKey(e.section) === cleanSecKey) {
+          const eStart = Math.max(1, Number(e.serialStart) || 1);
+          const eEnd = Math.max(eStart, Number(e.serialEnd) || eStart);
+          existingRanges.push({ start: eStart, end: eEnd });
+          if (eEnd > maxEnd) maxEnd = eEnd;
         }
       });
+
       const start = maxEnd + 1;
       const end = start + count - 1;
+      const padWidth = Math.max(3, String(end).length);
+      const collisionDetected = existingRanges.some(r => start <= r.end && end >= r.start);
+
       const serials = [];
       for (let i = start; i <= end; i++) {
-        serials.push(`${cleanProd}-${String(i).padStart(3, '0')}`);
+        serials.push(`${cleanProd}-${String(i).padStart(padWidth, '0')}`);
       }
-      return { start, end, serials };
+      return { start, end, padWidth, serials, collisionDetected };
     }
 
     function readEntryFormValues() {
@@ -1795,7 +1854,7 @@ function doPost(e) {
 
                   <div>
                     <label for="f-pairs" class="block text-xs font-semibold mb-1.5">Pairs Produced *</label>
-                    <input id="f-pairs" type="number" inputmode="numeric" min="1" max="5000" value="${escapeHtml(d.pairs)}" placeholder="50"
+                    <input id="f-pairs" type="number" inputmode="numeric" min="1" max="50000" value="${escapeHtml(d.pairs)}" placeholder="50"
                       oninput="handleEntryFormLiveChange()"
                       class="w-full min-h-[44px] px-3.5 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] border border-transparent focus:border-blue-500 outline-none font-mono text-sm font-bold" />
                     <p id="err-pairs" class="hidden text-xs text-red-500 mt-1 font-medium"></p>
@@ -1862,10 +1921,21 @@ function doPost(e) {
 
           <!-- Recent Entries List -->
           <section class="p-5 sm:p-7 rounded-3xl bg-white dark:bg-[#1C1C1E] shadow-apple dark:shadow-apple-dark border border-black/5 dark:border-white/10 space-y-4">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 class="text-base font-bold">Recent Entries (${state.entries.length})</h3>
-                <p class="text-xs text-[#86868B]">Expand any entry to view every generated serial number.</p>
+                <p class="text-xs text-[#86868B]">Expand any entry to view every generated serial number and inspector attribution.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <label for="recent-inspector-filter" class="text-[11px] font-bold uppercase tracking-wider text-[#86868B]">Inspector:</label>
+                <select id="recent-inspector-filter" onchange="setRecentInspectorFilter(this.value)"
+                  class="min-h-[38px] px-3 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] font-mono text-xs font-semibold outline-none">
+                  <option value="ALL" ${state.recentInspectorFilter === 'ALL' ? 'selected' : ''}>All Inspectors</option>
+                  ${state.inspectorId ? `<option value="MINE" ${state.recentInspectorFilter === 'MINE' ? 'selected' : ''}>My Entries (${escapeHtml(state.inspectorId)})</option>` : ''}
+                  ${Array.from(new Set(state.entries.map(e => e.inspector).filter(Boolean))).sort().map(insId =>
+                    `<option value="${escapeHtml(insId)}" ${state.recentInspectorFilter === insId ? 'selected' : ''}>${escapeHtml(insId)}</option>`
+                  ).join('')}
+                </select>
               </div>
             </div>
             <div id="recent-entries-list" class="space-y-3"></div>
@@ -1965,18 +2035,29 @@ function doPost(e) {
       const tagger = document.getElementById('serial-defect-tagger');
       if (!banner || !tagger) return;
 
+      const conv = prod ? validateSerialConvention(prod) : { valid: true, warnings: [] };
       const seq = getNextSerialRange(prod, sec, pairs, state.editingId);
       if (seq.serials.length > 0) {
         const first = seq.serials[0];
         const last = seq.serials[seq.serials.length - 1];
+        const warnHtml = (conv.warnings && conv.warnings.length)
+          ? `<div class="w-full text-[11px] text-amber-700 dark:text-amber-300 mt-1">⚠ ${escapeHtml(conv.warnings.join(' '))}</div>`
+          : '';
         banner.innerHTML = `
           <div class="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
             <span class="font-semibold text-blue-700 dark:text-blue-300">
-              Auto-Generated Serial Sequence (${seq.serials.length} pair${seq.serials.length === 1 ? '' : 's'} in ${escapeHtml(sec)}):
+              Auto-Generated Serial Sequence (${seq.serials.length} pair${seq.serials.length === 1 ? '' : 's'} • ${seq.padWidth}-digit width in ${escapeHtml(sec)}):
             </span>
             <span class="font-mono font-bold text-blue-600 dark:text-blue-400">
               ${escapeHtml(first)} → ${escapeHtml(last)}
             </span>
+            ${warnHtml}
+          </div>
+        `;
+      } else if (prod && !conv.valid) {
+        banner.innerHTML = `
+          <div class="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
+            ${escapeHtml(conv.message)}
           </div>
         `;
       } else {
@@ -2041,7 +2122,7 @@ function doPost(e) {
         if (el) el.classList.add('hidden');
       });
 
-      const product = document.getElementById('f-product').value.trim().toUpperCase();
+      const product = normalizeProductKey(document.getElementById('f-product').value);
       const style = document.getElementById('f-style').value.trim();
       const date = document.getElementById('f-date').value;
       const section = document.getElementById('f-section').value;
@@ -2064,8 +2145,9 @@ function doPost(e) {
         if (!firstBadInput && inpEl) firstBadInput = inpEl;
       };
 
-      if (!PRODUCT_ID_REGEX.test(product)) {
-        fail('product', 'Use dash-separated segments (e.g., 203-0926-DBN45).');
+      const convCheck = validateSerialConvention(product);
+      if (!convCheck.valid) {
+        fail('product', convCheck.message);
       }
       if (style.length < 2 || style.length > 40) {
         fail('style', 'Style must be 2 to 40 characters.');
@@ -2082,8 +2164,8 @@ function doPost(e) {
       if (!MACHINE_CODE_REGEX.test(machine)) {
         fail('machine', 'Format must be 2 letters + 4 digits (e.g., VE-8810).');
       }
-      if (!Number.isInteger(pairs) || pairs < 1 || pairs > 5000) {
-        fail('pairs', 'Enter a whole number between 1 and 5000.');
+      if (!Number.isInteger(pairs) || pairs < 1 || pairs > 50000) {
+        fail('pairs', 'Enter a whole number between 1 and 50000.');
       }
 
       if (firstBadInput) {
@@ -2128,8 +2210,9 @@ function doPost(e) {
       submitBtn.textContent = state.editingId ? 'Save Changes' : 'Save Entry';
       submitBtn.className = 'min-h-[44px] px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition cursor-pointer';
 
-      const firstSer = `${entry.product}-${String(entry.serialStart).padStart(3, '0')}`;
-      const lastSer = `${entry.product}-${String(entry.serialEnd).padStart(3, '0')}`;
+      const padW = Math.max(3, String(entry.serialEnd).length);
+      const firstSer = formatSerialCode(entry.product, entry.serialStart, padW);
+      const lastSer = formatSerialCode(entry.product, entry.serialEnd, padW);
 
       body.innerHTML = `
         <dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
@@ -2145,6 +2228,13 @@ function doPost(e) {
       `;
 
       submitBtn.onclick = () => {
+        // Re-verify serial range at save time in case background sync added entries
+        const liveSeq = getNextSerialRange(entry.product, entry.section, entry.pairs, state.editingId);
+        if (liveSeq.start !== entry.serialStart || liveSeq.end !== entry.serialEnd) {
+          entry.serialStart = liveSeq.start;
+          entry.serialEnd = liveSeq.end;
+          showToast(`Serial range rebased to ${formatSerialCode(entry.product, liveSeq.start, liveSeq.padWidth)}–${formatSerialCode(entry.product, liveSeq.end, liveSeq.padWidth)} to prevent collision`, 'info');
+        }
         if (state.editingId) {
           const idx = state.entries.findIndex(x => x.id === state.editingId);
           if (idx !== -1) state.entries[idx] = entry;
@@ -2168,19 +2258,33 @@ function doPost(e) {
       document.getElementById('confirm-modal').classList.add('hidden');
     }
 
+    function setRecentInspectorFilter(val) {
+      state.recentInspectorFilter = val || 'ALL';
+      renderRecentEntriesList();
+    }
+
     function renderRecentEntriesList() {
       const listEl = document.getElementById('recent-entries-list');
       if (!listEl) return;
 
-      if (!state.entries.length) {
-        listEl.innerHTML = `<p class="text-xs text-[#86868B] py-4 text-center">No entries recorded yet. Submit your first batch above.</p>`;
+      let filteredEntries = state.entries;
+      if (state.recentInspectorFilter === 'MINE' && state.inspectorId) {
+        filteredEntries = state.entries.filter(e => (e.inspector || '').toUpperCase() === state.inspectorId.toUpperCase());
+      } else if (state.recentInspectorFilter && state.recentInspectorFilter !== 'ALL') {
+        filteredEntries = state.entries.filter(e => (e.inspector || '').toUpperCase() === state.recentInspectorFilter.toUpperCase());
+      }
+
+      if (!filteredEntries.length) {
+        listEl.innerHTML = `<p class="text-xs text-[#86868B] py-4 text-center">No entries match the current inspector filter.</p>`;
         return;
       }
 
-      listEl.innerHTML = state.entries.slice(0, 25).map(entry => {
+      listEl.innerHTML = filteredEntries.slice(0, 25).map(entry => {
         const isExpanded = !!state.expandedEntryIds[entry.id];
-        const firstSer = `${entry.product}-${String(entry.serialStart).padStart(3, '0')}`;
-        const lastSer = `${entry.product}-${String(entry.serialEnd).padStart(3, '0')}`;
+        const padW = Math.max(3, String(entry.serialEnd).length);
+        const firstSer = formatSerialCode(entry.product, entry.serialStart, padW);
+        const lastSer = formatSerialCode(entry.product, entry.serialEnd, padW);
+        const inspectorBadge = (entry.inspector || 'UNKNOWN').toUpperCase();
         const defMap = {};
         (entry.serialDefects || []).forEach(sd => {
           defMap[sd.serial] = sd;
@@ -2190,7 +2294,7 @@ function doPost(e) {
         if (isExpanded) {
           const pills = [];
           for (let i = entry.serialStart; i <= entry.serialEnd; i++) {
-            const sCode = `${entry.product}-${String(i).padStart(3, '0')}`;
+            const sCode = formatSerialCode(entry.product, i, padW);
             const def = defMap[sCode];
             pills.push(`
               <span class="px-2 py-0.5 rounded-md font-mono text-[11px] ${
@@ -2216,6 +2320,7 @@ function doPost(e) {
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="font-mono text-sm font-bold text-blue-600 dark:text-blue-400">${escapeHtml(entry.product)}</span>
                   <span class="px-2 py-0.5 rounded-md bg-white dark:bg-[#1C1C1E] text-[11px] font-bold">${escapeHtml(entry.section)}</span>
+                  <span class="px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-mono text-[11px] font-bold" title="Logged by Inspector">${escapeHtml(inspectorBadge)}</span>
                   <span class="font-mono text-xs font-bold">${entry.pairs} pairs</span>
                   <span class="font-mono text-[11px] text-[#86868B]">(${escapeHtml(firstSer)} → ${escapeHtml(lastSer)})</span>
                 </div>
@@ -2289,8 +2394,9 @@ function doPost(e) {
         // Remove entry and its generated serial range & tagged serial defects from local state
         state.entries = state.entries.filter(e => e.id !== id);
         if (targetEntry) {
+          const delPad = Math.max(3, String(targetEntry.serialEnd).length);
           for (let s = targetEntry.serialStart; s <= targetEntry.serialEnd; s++) {
-            const serCode = `${targetEntry.product}-${String(s).padStart(3, '0')}`;
+            const serCode = formatSerialCode(targetEntry.product, s, delPad);
             delete state.selectedSerialDefects[serCode];
           }
         }
@@ -2316,10 +2422,88 @@ function doPost(e) {
     }
 
     /*************************************************************************
-     * 6. PRODUCTION ORDERS & OPERATOR REGISTRY VIEWS
+     * 6. PRODUCTION ORDERS (WITH DUPLICATE ORDER & PRESETS) & REGISTRY VIEWS
      *************************************************************************/
+    function generateUniqueVariantSKU(baseSku) {
+      const clean = normalizeProductKey(baseSku);
+      const existingSet = new Set(state.orders.map(o => normalizeProductKey(o.product)));
+      const match = clean.match(/^(.*?)-V(\d+)$/);
+      const stem = match ? match[1] : clean;
+      let nextVer = match ? (parseInt(match[2], 10) + 1) : 2;
+      let candidate = `${stem}-V${nextVer}`;
+      while (existingSet.has(candidate)) {
+        nextVer += 1;
+        candidate = `${stem}-V${nextVer}`;
+      }
+      return candidate;
+    }
+
+    function duplicateOrder(id) {
+      const source = state.orders.find(o => o.id === id);
+      if (!source) return;
+      const suggestedSku = generateUniqueVariantSKU(source.product);
+      state.editingOrderId = null;
+      state.orderFormDraft = {
+        product: suggestedSku,
+        category: source.category || 'Shoe',
+        style: source.style || '',
+        targetPairs: source.targetPairs || 10,
+        duplicatedFrom: source.product
+      };
+      state.orderDraftParts = (source.parts || []).map((p, idx) => ({
+        id: 'dp-' + Date.now() + '-' + idx,
+        section: p.section,
+        name: p.name,
+        perPair: Math.max(1, parseInt(p.perPair, 10) || 1)
+      }));
+      if (state.orderDraftParts.length === 0) {
+        state.orderDraftParts = [{ id: 'dp-' + Date.now(), section: state.settings.sections[0] || 'Cutting', name: '', perPair: 1 }];
+      }
+      renderActiveView();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast(`Duplicated ${source.product} as draft ${suggestedSku}`, 'info');
+    }
+
+    function applyOrderProcessPreset(presetType) {
+      const firstSec = state.settings.sections[0] || 'Cutting';
+      const secondSec = state.settings.sections[1] || 'Stitching';
+      const thirdSec = state.settings.sections[2] || 'Lasting';
+      const fourthSec = state.settings.sections[3] || 'Sole Attachment';
+
+      if (presetType === 'shoe') {
+        state.orderDraftParts = [
+          { id: 'dp-' + Date.now() + '-1', section: firstSec, name: 'Full-grain vamp & quarter cutting', perPair: 1 },
+          { id: 'dp-' + Date.now() + '-2', section: secondSec, name: 'Upper closed seam & eyelet stay', perPair: 1 },
+          { id: 'dp-' + Date.now() + '-3', section: thirdSec, name: 'Toe & heel thermal lasting', perPair: 1 },
+          { id: 'dp-' + Date.now() + '-4', section: fourthSec, name: 'Outsole cement & press', perPair: 1 }
+        ];
+      } else if (presetType === 'sandal') {
+        state.orderDraftParts = [
+          { id: 'dp-' + Date.now() + '-1', section: firstSec, name: 'Front & ankle straps cutting', perPair: 4 },
+          { id: 'dp-' + Date.now() + '-2', section: firstSec, name: 'Leather footbed & outsole cut', perPair: 2 },
+          { id: 'dp-' + Date.now() + '-3', section: secondSec, name: 'Strap edge stitching & buckle loop', perPair: 2 },
+          { id: 'dp-' + Date.now() + '-4', section: thirdSec, name: 'Strap lasting & footbed cement', perPair: 1 }
+        ];
+      }
+      renderOrderDraftPartsHTML();
+    }
+
+    function duplicateDraftPartRow(idx) {
+      const src = state.orderDraftParts[idx];
+      if (!src) return;
+      state.orderDraftParts.splice(idx + 1, 0, {
+        id: 'dp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+        section: src.section,
+        name: src.name,
+        perPair: src.perPair
+      });
+      renderOrderDraftPartsHTML();
+    }
+
     function renderProductionOrdersView(container) {
       const editingOrder = state.editingOrderId ? state.orders.find(o => o.id === state.editingOrderId) : null;
+      const draftOrder = !editingOrder ? state.orderFormDraft : null;
+
       if (editingOrder && state.orderDraftParts.length === 0) {
         state.orderDraftParts = editingOrder.parts.map(p => ({ ...p }));
       }
@@ -2329,34 +2513,50 @@ function doPost(e) {
         ];
       }
 
-      const targetVal = editingOrder ? editingOrder.targetPairs : 10;
+      const activeForm = editingOrder || draftOrder || {};
+      const targetVal = activeForm.targetPairs || 10;
 
       container.innerHTML = `
         <div class="space-y-6 animate-view">
           <section class="p-5 sm:p-7 rounded-3xl bg-white dark:bg-[#1C1C1E] shadow-apple border border-black/5 dark:border-white/10 space-y-5">
-            <div>
-              <h3 class="text-lg font-bold">${editingOrder ? 'Edit Production Order' : 'Create Footwear Production Order'}</h3>
-              <p class="text-xs text-[#86868B]">Define order target pairs and component parameters per production section.</p>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="text-lg font-bold">${editingOrder ? 'Edit Production Order' : (draftOrder ? 'New Duplicated Order Draft' : 'Create Footwear Production Order')}</h3>
+                  ${draftOrder?.duplicatedFrom ? `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">Cloned from ${escapeHtml(draftOrder.duplicatedFrom)}</span>` : ''}
+                </div>
+                <p class="text-xs text-[#86868B]">Define order target pairs and component parameters per production section.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="applyOrderProcessPreset('shoe')"
+                  class="px-2.5 py-1.5 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] hover:bg-blue-500/10 text-[11px] font-semibold cursor-pointer">
+                  Load Standard Shoe Routing
+                </button>
+                <button type="button" onclick="applyOrderProcessPreset('sandal')"
+                  class="px-2.5 py-1.5 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] hover:bg-blue-500/10 text-[11px] font-semibold cursor-pointer">
+                  Load Strappy Sandal Routing
+                </button>
+              </div>
             </div>
 
             <form id="order-form" class="space-y-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label class="block text-xs font-semibold mb-1.5">Product ID (SKU) *</label>
-                  <input id="ord-product" type="text" required value="${escapeHtml(editingOrder ? editingOrder.product : '')}" placeholder="205-1126-SND10"
+                  <input id="ord-product" type="text" required value="${escapeHtml(activeForm.product || '')}" placeholder="205-1126-SND10"
                     class="w-full min-h-[44px] px-3.5 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] font-mono text-sm uppercase outline-none" />
                 </div>
                 <div>
                   <label class="block text-xs font-semibold mb-1.5">Footwear Category *</label>
                   <select id="ord-category" class="w-full min-h-[44px] px-3.5 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] text-sm font-medium outline-none">
                     ${['Shoe', 'Sandal', 'Slipper', 'Boot'].map(cat =>
-                      `<option value="${cat}" ${(editingOrder?.category || 'Shoe') === cat ? 'selected' : ''}>${cat}</option>`
+                      `<option value="${cat}" ${(activeForm.category || 'Shoe') === cat ? 'selected' : ''}>${cat}</option>`
                     ).join('')}
                   </select>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold mb-1.5">Style Description *</label>
-                  <input id="ord-style" type="text" required value="${escapeHtml(editingOrder ? editingOrder.style : '')}" placeholder="Strappy Leather Sandal"
+                  <input id="ord-style" type="text" required value="${escapeHtml(activeForm.style || '')}" placeholder="Strappy Leather Sandal"
                     class="w-full min-h-[44px] px-3.5 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] text-sm outline-none" />
                 </div>
                 <div>
@@ -2378,7 +2578,7 @@ function doPost(e) {
               </div>
 
               <div class="flex justify-end gap-2 pt-2">
-                ${editingOrder ? `<button type="button" onclick="cancelEditOrder()" class="min-h-[44px] px-4 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] text-xs font-semibold cursor-pointer">Cancel</button>` : ''}
+                ${(editingOrder || draftOrder) ? `<button type="button" onclick="cancelEditOrder()" class="min-h-[44px] px-4 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E] text-xs font-semibold cursor-pointer">${editingOrder ? 'Cancel' : 'Clear Draft'}</button>` : ''}
                 <button type="submit" class="min-h-[44px] px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold cursor-pointer">
                   ${editingOrder ? 'Update Production Order' : 'Save Production Order'}
                 </button>
@@ -2398,7 +2598,8 @@ function doPost(e) {
                     </div>
                     <p class="text-xs text-[#86868B] mt-0.5">${escapeHtml(ord.style)} • Target: <strong class="font-mono text-[#1D1D1F] dark:text-[#F5F5F7]">${ord.targetPairs} pairs</strong></p>
                   </div>
-                  <div class="flex gap-1.5">
+                  <div class="flex flex-wrap justify-end gap-1.5">
+                    <button type="button" onclick="duplicateOrder('${escapeHtml(ord.id)}')" class="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-xs font-semibold text-emerald-700 dark:text-emerald-300 cursor-pointer">Duplicate</button>
                     <button type="button" onclick="editOrder('${escapeHtml(ord.id)}')" class="px-2.5 py-1 rounded-lg bg-[#F5F5F7] dark:bg-[#2C2C2E] text-xs font-semibold text-blue-600 cursor-pointer">Edit</button>
                     <button type="button" onclick="deleteOrder('${escapeHtml(ord.id)}')" class="px-2.5 py-1 rounded-lg bg-red-500/10 text-xs font-semibold text-red-600 cursor-pointer">Delete</button>
                   </div>
@@ -2447,10 +2648,11 @@ function doPost(e) {
                 oninput="updateDraftPart(${idx}, 'perPair', Number(this.value))"
                 class="w-full min-h-[38px] px-2.5 rounded-xl bg-white dark:bg-[#1C1C1E] font-mono text-xs outline-none" />
             </div>
-            <div class="sm:col-span-2 flex items-center justify-between sm:justify-end gap-2">
+            <div class="sm:col-span-2 flex items-center justify-between sm:justify-end gap-1.5">
               <span class="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">= ${totalReq}</span>
+              <button type="button" onclick="duplicateDraftPartRow(${idx})" title="Duplicate row" class="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold px-1.5 py-1 cursor-pointer">⧉</button>
               ${state.orderDraftParts.length > 1 ? `
-                <button type="button" onclick="removeDraftPart(${idx})" class="text-xs text-red-500 font-bold px-2 py-1 cursor-pointer">✕</button>
+                <button type="button" onclick="removeDraftPart(${idx})" title="Remove row" class="text-xs text-red-500 font-bold px-1.5 py-1 cursor-pointer">✕</button>
               ` : ''}
             </div>
           </div>
@@ -2481,13 +2683,22 @@ function doPost(e) {
 
     function handleOrderFormSubmit(e) {
       e.preventDefault();
-      const product = document.getElementById('ord-product').value.trim().toUpperCase();
+      const product = normalizeProductKey(document.getElementById('ord-product').value);
       const category = document.getElementById('ord-category').value;
       const style = document.getElementById('ord-style').value.trim();
       const targetPairs = Math.max(1, parseInt(document.getElementById('ord-target').value, 10) || 1);
 
-      if (!PRODUCT_ID_REGEX.test(product)) {
-        showToast('Enter a valid Product ID (e.g., 205-1126-SND10).', 'error');
+      const convCheck = validateSerialConvention(product);
+      if (!convCheck.valid) {
+        showToast(convCheck.message, 'error');
+        return;
+      }
+
+      // Prevent accidental duplicate SKU across distinct active orders
+      const conflict = state.orders.find(o => normalizeProductKey(o.product) === product && o.id !== state.editingOrderId);
+      if (conflict) {
+        const nextSuggested = generateUniqueVariantSKU(product);
+        showToast(`SKU ${product} already exists. Use a unique variant like ${nextSuggested}.`, 'error');
         return;
       }
 
@@ -2518,6 +2729,7 @@ function doPost(e) {
       } else {
         state.orders.unshift(orderObj);
       }
+      state.orderFormDraft = null;
       state.orderDraftParts = [];
       saveOrdersToLocal();
       renderActiveView();
@@ -2526,12 +2738,14 @@ function doPost(e) {
 
     function editOrder(id) {
       state.editingOrderId = id;
+      state.orderFormDraft = null;
       state.orderDraftParts = [];
       renderActiveView();
     }
 
     function cancelEditOrder() {
       state.editingOrderId = null;
+      state.orderFormDraft = null;
       state.orderDraftParts = [];
       renderActiveView();
     }
@@ -3871,8 +4085,9 @@ function doPost(e) {
                     const donePairs = st ? st.pairs : 0;
                     const isFurthest = idx === furthestIdx;
                     const hasSerials = st && st.maxSerial > 0;
+                    const trPad = hasSerials ? Math.max(3, String(st.maxSerial).length) : 3;
                     const rangeLabel = hasSerials
-                      ? `#${String(st.minSerial).padStart(3, '0')}–#${String(st.maxSerial).padStart(3, '0')}`
+                      ? `#${String(st.minSerial).padStart(trPad, '0')}–#${String(st.maxSerial).padStart(trPad, '0')}`
                       : 'No serials yet';
 
                     // Gather configured order parts for this section + any ad-hoc logged processes
